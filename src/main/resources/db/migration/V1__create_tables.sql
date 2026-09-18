@@ -1,5 +1,5 @@
 -- Users
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE users (
 );
 
 -- Organizer Profiles
-CREATE TABLE organizer_profiles (
+CREATE TABLE IF NOT EXISTS organizer_profiles (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL UNIQUE REFERENCES users(id),
     organization_name VARCHAR(255),
@@ -32,7 +32,7 @@ CREATE TABLE organizer_profiles (
 );
 
 -- Events
-CREATE TABLE events (
+CREATE TABLE IF NOT EXISTS events (
     id BIGSERIAL PRIMARY KEY,
     organizer_id BIGINT NOT NULL REFERENCES users(id),
     title VARCHAR(255) NOT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE events (
 );
 
 -- Ticket Types
-CREATE TABLE ticket_types (
+CREATE TABLE IF NOT EXISTS ticket_types (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT NOT NULL REFERENCES events(id),
     name VARCHAR(255) NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE ticket_types (
 );
 
 -- Promotional Campaigns
-CREATE TABLE promotional_campaigns (
+CREATE TABLE IF NOT EXISTS promotional_campaigns (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT NOT NULL REFERENCES events(id),
     name VARCHAR(255) NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE promotional_campaigns (
 );
 
 -- Promo Codes
-CREATE TABLE promo_codes (
+CREATE TABLE IF NOT EXISTS promo_codes (
     id BIGSERIAL PRIMARY KEY,
     campaign_id BIGINT NOT NULL REFERENCES promotional_campaigns(id),
     code VARCHAR(255) NOT NULL UNIQUE,
@@ -95,7 +95,7 @@ CREATE TABLE promo_codes (
 );
 
 -- Orders
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id BIGSERIAL PRIMARY KEY,
     attendee_id BIGINT NOT NULL REFERENCES users(id),
     event_id BIGINT NOT NULL REFERENCES events(id),
@@ -110,7 +110,7 @@ CREATE TABLE orders (
 );
 
 -- Order Items
-CREATE TABLE order_items (
+CREATE TABLE IF NOT EXISTS order_items (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES orders(id),
     ticket_type_id BIGINT NOT NULL REFERENCES ticket_types(id),
@@ -123,7 +123,7 @@ CREATE TABLE order_items (
 );
 
 -- Tickets
-CREATE TABLE tickets (
+CREATE TABLE IF NOT EXISTS tickets (
     id BIGSERIAL PRIMARY KEY,
     ticket_code VARCHAR(255) NOT NULL UNIQUE,
     order_id BIGINT NOT NULL REFERENCES orders(id),
@@ -140,7 +140,7 @@ CREATE TABLE tickets (
 );
 
 -- Payments
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES orders(id),
     amount NUMERIC(12, 2) NOT NULL,
@@ -152,7 +152,7 @@ CREATE TABLE payments (
 );
 
 -- Refunds
-CREATE TABLE refunds (
+CREATE TABLE IF NOT EXISTS refunds (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL REFERENCES orders(id),
     payment_id BIGINT REFERENCES payments(id),
@@ -163,7 +163,7 @@ CREATE TABLE refunds (
 );
 
 -- Check-in Records
-CREATE TABLE check_in_records (
+CREATE TABLE IF NOT EXISTS check_in_records (
     id BIGSERIAL PRIMARY KEY,
     ticket_id BIGINT NOT NULL REFERENCES tickets(id),
     event_id BIGINT NOT NULL REFERENCES events(id),
@@ -173,7 +173,7 @@ CREATE TABLE check_in_records (
 );
 
 -- Staff Assignments
-CREATE TABLE staff_assignments (
+CREATE TABLE IF NOT EXISTS staff_assignments (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT NOT NULL REFERENCES events(id),
     user_id BIGINT NOT NULL REFERENCES users(id),
@@ -181,7 +181,7 @@ CREATE TABLE staff_assignments (
 );
 
 -- Support Cases
-CREATE TABLE support_cases (
+CREATE TABLE IF NOT EXISTS support_cases (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id),
     event_id BIGINT REFERENCES events(id),
@@ -196,7 +196,7 @@ CREATE TABLE support_cases (
 );
 
 -- Support Messages
-CREATE TABLE support_messages (
+CREATE TABLE IF NOT EXISTS support_messages (
     id BIGSERIAL PRIMARY KEY,
     case_id BIGINT NOT NULL REFERENCES support_cases(id),
     sender_id BIGINT NOT NULL REFERENCES users(id),
@@ -205,7 +205,7 @@ CREATE TABLE support_messages (
 );
 
 -- Audit Logs
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGSERIAL PRIMARY KEY,
     event_id BIGINT,
     user_id BIGINT,
@@ -217,7 +217,7 @@ CREATE TABLE audit_logs (
 );
 
 -- Notifications
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id),
     type VARCHAR(100) NOT NULL,
