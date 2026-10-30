@@ -12,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -28,6 +30,7 @@ public class OrderService {
     private final PaymentRepository paymentRepository;
     private final RefundRepository refundRepository;
     private final AuditService auditService;
+    private final SeatService seatService;
 
     @Transactional
     public OrderResponse createOrder(OrderRequest request, User attendee) {
@@ -44,6 +47,8 @@ public class OrderService {
         List<OrderItem> items = new ArrayList<>();
 
         boolean hasPaidTickets = false;
+        boolean useSeatMap = event.isAssignedSeating() && seatService.hasSeatMap(event.getId());
+        List<Seat> claimedSeats = new ArrayList<>();
 
         for (OrderRequest.OrderItemRequest itemReq : request.getItems()) {
             TicketType ticketType = ticketTypeRepository.findById(itemReq.getTicketTypeId())
@@ -69,6 +74,15 @@ public class OrderService {
                 }
             }
 
+            List<Seat> itemSeats = List.of();
+            if (useSeatMap) {
+                itemSeats = seatService.claimHeldSeats(event, ticketType, itemReq.getSeatIds(),
+                        itemReq.getQuantity(), attendee);
+                claimedSeats.addAll(itemSeats);
+            }
+            // A single seat is also mirrored onto the item; multi-seat items keep them on the seats table
+            Seat singleSeat = itemSeats.size() == 1 ? itemSeats.get(0) : null;
+
             BigDecimal itemTotal = ticketType.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
             totalAmount = totalAmount.add(itemTotal);
 
@@ -77,9 +91,9 @@ public class OrderService {
                     .quantity(itemReq.getQuantity())
                     .unitPrice(ticketType.getPrice())
                     .discount(BigDecimal.ZERO)
-                    .seatSection(itemReq.getSeatSection())
-                    .seatRow(itemReq.getSeatRow())
-                    .seatNumber(itemReq.getSeatNumber())
+                    .seatSection(useSeatMap ? (singleSeat != null ? singleSeat.getSection() : null) : itemReq.getSeatSection())
+                    .seatRow(useSeatMap ? (singleSeat != null ? singleSeat.getRowLabel() : null) : itemReq.getSeatRow())
+                    .seatNumber(useSeatMap ? (singleSeat != null ? singleSeat.getSeatNumber() : null) : itemReq.getSeatNumber())
                     .build();
             items.add(item);
         }
@@ -139,6 +153,7 @@ public class OrderService {
         }
         orderItemRepository.saveAll(items);
         order.setItems(items);
+        seatService.markSold(claimedSeats, order);
 
         // Update inventory
         for (OrderItem item : items) {
@@ -233,6 +248,7 @@ public class OrderService {
             tt.setSold(tt.getSold() - item.getQuantity());
             ticketTypeRepository.save(tt);
         }
+        seatService.releaseOrderSeats(orderId);
 
         // Create refund record
         Refund refund = Refund.builder()
@@ -252,6 +268,7 @@ public class OrderService {
         return toResponse(order);
     }
 
+    @Transactional
     public OrderResponse cancelOrder(Long orderId, User user) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
@@ -280,6 +297,7 @@ public class OrderService {
             tt.setSold(tt.getSold() - item.getQuantity());
             ticketTypeRepository.save(tt);
         }
+        seatService.releaseOrderSeats(orderId);
 
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
@@ -304,8 +322,15 @@ public class OrderService {
     }
 
     private void generateTickets(Order order, List<OrderItem> items) {
+        Map<Long, List<Seat>> seatsByTicketType = new HashMap<>();
+        for (Seat seat : seatService.getOrderSeats(order.getId())) {
+            seatsByTicketType.computeIfAbsent(seat.getTicketType().getId(), k -> new ArrayList<>()).add(seat);
+        }
+
         for (OrderItem item : items) {
+            List<Seat> seats = seatsByTicketType.getOrDefault(item.getTicketType().getId(), new ArrayList<>());
             for (int i = 0; i < item.getQuantity(); i++) {
+                Seat seat = seats.isEmpty() ? null : seats.remove(0);
                 Ticket ticket = Ticket.builder()
                         .ticketCode(UUID.randomUUID().toString())
                         .order(order)
@@ -315,9 +340,9 @@ public class OrderService {
                         .attendeeName(order.getAttendeeFirstName() + " " + order.getAttendeeLastName())
                         .attendeeEmail(order.getAttendeeEmail())
                         .status(TicketStatus.VALID)
-                        .seatSection(item.getSeatSection())
-                        .seatRow(item.getSeatRow())
-                        .seatNumber(item.getSeatNumber())
+                        .seatSection(seat != null ? seat.getSection() : item.getSeatSection())
+                        .seatRow(seat != null ? seat.getRowLabel() : item.getSeatRow())
+                        .seatNumber(seat != null ? seat.getSeatNumber() : item.getSeatNumber())
                         .build();
                 ticketRepository.save(ticket);
             }
@@ -328,6 +353,11 @@ public class OrderService {
         List<OrderItem> items = order.getItems();
         if (items == null || items.isEmpty()) {
             items = orderItemRepository.findByOrderId(order.getId());
+        }
+        Map<Long, List<String>> seatLabels = new HashMap<>();
+        for (Seat seat : seatService.getOrderSeats(order.getId())) {
+            seatLabels.computeIfAbsent(seat.getTicketType().getId(), k -> new ArrayList<>())
+                    .add(seat.getSection() + "-" + seat.getRowLabel() + "-" + seat.getSeatNumber());
         }
 
         return OrderResponse.builder()
@@ -347,6 +377,7 @@ public class OrderService {
                         .quantity(item.getQuantity())
                         .unitPrice(item.getUnitPrice())
                         .discount(item.getDiscount())
+                        .seats(seatLabels.getOrDefault(item.getTicketType().getId(), List.of()))
                         .build()).toList())
                 .createdAt(order.getCreatedAt())
                 .build();
