@@ -31,5 +31,6 @@ public class OrderResponse {
         private Integer quantity;
         private BigDecimal unitPrice;
         private BigDecimal discount;
+        private List<String> seats;
     }
 }
