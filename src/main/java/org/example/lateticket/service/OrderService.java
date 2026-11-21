@@ -6,6 +6,7 @@ import org.example.lateticket.entity.*;
 import org.example.lateticket.entity.enums.*;
 import org.example.lateticket.repository.*;
 import org.example.lateticket.entity.Refund;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,11 @@ public class OrderService {
     private final RefundRepository refundRepository;
     private final AuditService auditService;
     private final SeatService seatService;
+    private final AccessService accessService;
+
+    // Unpaid PENDING orders hold inventory (tickets, seats, promo redemption) only for this long
+    @Value("${app.orders.pending-timeout-minutes:15}")
+    private int pendingTimeoutMinutes;
 
     @Transactional
     public OrderResponse createOrder(OrderRequest request, User attendee) {
@@ -56,6 +62,11 @@ public class OrderService {
 
             if (!ticketType.getEvent().getId().equals(event.getId())) {
                 throw new RuntimeException("Ticket type does not belong to this event");
+            }
+            TicketSalesRules.assertOnSale(ticketType);
+
+            if (itemReq.getQuantity() < 1) {
+                throw new RuntimeException("Quantity must be at least 1 for: " + ticketType.getName());
             }
 
             int available = ticketType.getQuantity() - ticketType.getSold();
@@ -189,7 +200,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse completePayment(Long orderId, User attendee) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.lockById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
 
         if (!order.getAttendee().getId().equals(attendee.getId())) {
@@ -197,6 +208,10 @@ public class OrderService {
         }
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new RuntimeException("Order is not pending payment");
+        }
+        if (LocalDateTime.now().isAfter(paymentDeadline(order))) {
+            // The expiry job will cancel it and release the inventory
+            throw new RuntimeException("Payment window has expired, please place a new order");
         }
 
         // Simulated payment
@@ -270,7 +285,7 @@ public class OrderService {
 
     @Transactional
     public OrderResponse cancelOrder(Long orderId, User user) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.lockById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
 
         boolean isAttendee = order.getAttendee().getId().equals(user.getId());
@@ -282,6 +297,35 @@ public class OrderService {
         if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.COMPLETED) {
             throw new RuntimeException("Order cannot be cancelled");
         }
+
+        cancelAndRelease(order);
+        return toResponse(order);
+    }
+
+    /**
+     * Cancels a PENDING order whose payment window has passed, releasing its tickets, seats and promo redemption.
+     * Called by {@link OrderExpiryJob}; re-checks the state under a row lock so it can't race with payment.
+     */
+    @Transactional
+    public boolean expireIfStale(Long orderId) {
+        Order order = orderRepository.lockById(orderId).orElse(null);
+        if (order == null || order.getStatus() != OrderStatus.PENDING
+                || !LocalDateTime.now().isAfter(paymentDeadline(order))) {
+            return false;
+        }
+        cancelAndRelease(order);
+        auditService.log(order.getEvent().getId(), order.getAttendee().getId(), "EXPIRE", "Order", order.getId(),
+                "Unpaid order cancelled after " + pendingTimeoutMinutes + " minutes");
+        return true;
+    }
+
+    public List<Long> findStalePendingOrderIds() {
+        return orderRepository.findIdsByStatusAndCreatedAtBefore(OrderStatus.PENDING,
+                LocalDateTime.now().minusMinutes(pendingTimeoutMinutes));
+    }
+
+    private void cancelAndRelease(Order order) {
+        Long orderId = order.getId();
 
         // Invalidate tickets
         List<Ticket> tickets = ticketRepository.findByOrderId(orderId);
@@ -299,10 +343,18 @@ public class OrderService {
         }
         seatService.releaseOrderSeats(orderId);
 
+        // Give the promo redemption back
+        if (order.getPromoCode() != null) {
+            PromotionalCampaign campaign = order.getPromoCode().getCampaign();
+            campaign.setCurrentRedemptions(Math.max(0, campaign.getCurrentRedemptions() - 1));
+        }
+
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
+    }
 
-        return toResponse(order);
+    private LocalDateTime paymentDeadline(Order order) {
+        return order.getCreatedAt().plusMinutes(pendingTimeoutMinutes);
     }
 
     public List<OrderResponse> getAttendeeOrders(Long attendeeId) {
@@ -310,14 +362,18 @@ public class OrderService {
                 .stream().map(this::toResponse).toList();
     }
 
-    public List<OrderResponse> getEventOrders(Long eventId) {
+    public List<OrderResponse> getEventOrders(Long eventId, User user) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        accessService.checkCanManageEvent(event, user);
         return orderRepository.findByEventId(eventId)
                 .stream().map(this::toResponse).toList();
     }
 
-    public OrderResponse getOrder(Long orderId) {
+    public OrderResponse getOrder(Long orderId, User user) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
+        accessService.checkCanViewOrder(order, user);
         return toResponse(order);
     }
 
@@ -380,6 +436,7 @@ public class OrderService {
                         .seats(seatLabels.getOrDefault(item.getTicketType().getId(), List.of()))
                         .build()).toList())
                 .createdAt(order.getCreatedAt())
+                .paymentDeadline(order.getStatus() == OrderStatus.PENDING ? paymentDeadline(order) : null)
                 .build();
     }
 }

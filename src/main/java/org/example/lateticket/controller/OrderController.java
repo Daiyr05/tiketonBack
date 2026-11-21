@@ -54,13 +54,14 @@ public class OrderController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id) {
-        return ResponseEntity.ok(orderService.getOrder(id));
+    public ResponseEntity<OrderResponse> getOrder(@PathVariable Long id, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(orderService.getOrder(id, user));
     }
 
     @GetMapping("/event/{eventId}")
     @PreAuthorize("hasRole('ORGANIZER')")
-    public ResponseEntity<List<OrderResponse>> getEventOrders(@PathVariable Long eventId) {
-        return ResponseEntity.ok(orderService.getEventOrders(eventId));
+    public ResponseEntity<List<OrderResponse>> getEventOrders(
+            @PathVariable Long eventId, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(orderService.getEventOrders(eventId, user));
     }
 }

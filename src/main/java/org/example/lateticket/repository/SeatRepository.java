@@ -15,7 +15,8 @@ import java.util.List;
 
 public interface SeatRepository extends JpaRepository<Seat, Long> {
 
-    List<Seat> findByEventIdOrderBySectionAscRowLabelAscIdAsc(Long eventId);
+    // Seats are inserted in the order the editor sends sections/rows/seats, so id order is the layout order
+    List<Seat> findByEventIdOrderByIdAsc(Long eventId);
 
     List<Seat> findByOrderId(Long orderId);
 

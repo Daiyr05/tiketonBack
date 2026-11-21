@@ -22,6 +22,8 @@ public class OrderResponse {
     private String promoCode;
     private List<ItemResponse> items;
     private LocalDateTime createdAt;
+    // Set for PENDING orders: after this moment (UTC) the order is cancelled and its seats are released
+    private LocalDateTime paymentDeadline;
 
     @Data
     @Builder

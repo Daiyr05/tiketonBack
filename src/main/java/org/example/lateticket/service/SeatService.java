@@ -97,7 +97,7 @@ public class SeatService {
     }
 
     public List<SeatResponse> getSeatMap(Long eventId, User viewer) {
-        return seatRepository.findByEventIdOrderBySectionAscRowLabelAscIdAsc(eventId)
+        return seatRepository.findByEventIdOrderByIdAsc(eventId)
                 .stream().map(s -> toResponse(s, viewer)).toList();
     }
 
@@ -120,6 +120,7 @@ public class SeatService {
             if (!seat.isFree() && !seat.isHeldBy(user)) {
                 throw new RuntimeException("Seat is no longer available: " + describe(seat));
             }
+            TicketSalesRules.assertOnSale(seat.getTicketType());
             seat.setStatus(SeatStatus.HELD);
             seat.setHeldBy(user);
             seat.setHeldUntil(heldUntil);
@@ -196,7 +197,7 @@ public class SeatService {
         if (seatRepository.existsByEventIdAndStatus(eventId, SeatStatus.SOLD)) {
             throw new RuntimeException("Seat map cannot be changed after seats have been sold");
         }
-        boolean activeHolds = seatRepository.findByEventIdOrderBySectionAscRowLabelAscIdAsc(eventId)
+        boolean activeHolds = seatRepository.findByEventIdOrderByIdAsc(eventId)
                 .stream().anyMatch(Seat::isHoldActive);
         if (activeHolds) {
             throw new RuntimeException("Seat map cannot be changed while attendees are holding seats");
