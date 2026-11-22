@@ -99,6 +99,34 @@ Content-Type: application/json
 
 Role can be `ATTENDEE` or `ORGANIZER`.
 
+### Forgot / Reset Password
+
+```
+POST /api/auth/forgot-password
+{ "email": "attendee@biletflow.kz" }
+```
+Always returns 200 with the same message, whether or not the email exists. The reset link is emailed
+(valid 60 minutes). While `app.auth.expose-reset-token=true` (the default for the academic MVP, no SMTP),
+the response also carries the token so the flow can be tested:
+```json
+{ "message": "If an account with that email exists, a reset link has been sent",
+  "resetToken": "7c1e...", "expiresInMinutes": 60 }
+```
+
+```
+POST /api/auth/reset-password
+{ "token": "7c1e...", "newPassword": "newpass123" }
+```
+Returns 200 on success; 400 `Invalid or expired reset token` otherwise. The token is single-use.
+
+### Current user
+
+```
+GET /api/users/me
+```
+Returns `{ id, email, firstName, lastName, role, emailVerified, suspended }`.
+User objects anywhere in the API never include the password hash or any tokens.
+
 ---
 
 ## Public Endpoints (no token needed)
@@ -108,6 +136,8 @@ Role can be `ATTENDEE` or `ORGANIZER`.
 | POST | /api/auth/register | Register |
 | POST | /api/auth/login | Login |
 | GET | /api/auth/verify?token=xxx | Verify email |
+| POST | /api/auth/forgot-password | Request a password reset |
+| POST | /api/auth/reset-password | Set a new password with the reset token |
 | GET | /api/events/public | List public published events |
 | GET | /api/events/{id} | Get event details |
 | GET | /api/events/{id}/ticket-types | Get visible ticket types |
@@ -355,14 +385,21 @@ POST /api/promo/campaigns/{id}/deactivate
 ### Staff Management
 
 ```
-# Assign event admin
+# Find a user by email (to get their id / confirm the account exists)
+GET /api/users/lookup?email=eventadmin@biletflow.kz
+# -> { "id": 4, "email": "...", "firstName": "Demo", "lastName": "EventAdmin", "role": "EVENT_ADMIN", ... }
+# 400 "No user with email ..." if there is no such account
+
+# Assign event admin, by id or by email
 POST /api/staff/assign
 { "eventId": 1, "userId": 4 }
+POST /api/staff/assign
+{ "eventId": 1, "email": "eventadmin@biletflow.kz" }
 
 # View event staff
 GET /api/staff/event/{eventId}
 
-# Remove staff
+# Remove staff (only for your own events)
 DELETE /api/staff/{assignmentId}
 ```
 

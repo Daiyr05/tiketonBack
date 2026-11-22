@@ -1,5 +1,6 @@
 package org.example.lateticket.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.example.lateticket.entity.enums.Role;
@@ -18,6 +19,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
@@ -30,9 +32,14 @@ public class User {
     private Role role;
 
     private boolean emailVerified;
+
+    @JsonIgnore
     private String verificationToken;
 
+    @JsonIgnore
     private String resetPasswordToken;
+
+    @JsonIgnore
     private LocalDateTime resetPasswordExpiry;
 
     @Column(nullable = false, updatable = false)
