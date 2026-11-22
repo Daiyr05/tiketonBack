@@ -32,6 +32,9 @@ public class CheckInRecord {
 
     private boolean reversed;
 
+    @Column(name = "reversal_reason", columnDefinition = "TEXT")
+    private String reversalReason;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime timestamp;
 

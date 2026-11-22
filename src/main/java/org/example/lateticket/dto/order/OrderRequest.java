@@ -27,7 +27,10 @@ public class OrderRequest {
         @NotNull
         private Integer quantity;
 
-        // For assigned seating
+        // Seat map: ids of seats held via POST /api/events/{eventId}/seats/hold (one per ticket)
+        private List<Long> seatIds;
+
+        // Free-text seat preference, used only when the event has no seat map
         private String seatSection;
         private String seatRow;
         private String seatNumber;
