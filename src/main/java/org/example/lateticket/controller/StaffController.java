@@ -20,13 +20,16 @@ public class StaffController {
     private final EventRepository eventRepository;
     private final UserRepository userRepository;
 
+    /** Assign a user as event staff. Body: { "eventId": 1, "userId": 4 } or { "eventId": 1, "email": "x@y.kz" }. */
     @PostMapping("/assign")
     @PreAuthorize("hasRole('ORGANIZER')")
     public ResponseEntity<StaffAssignment> assignStaff(
-            @RequestBody Map<String, Long> body,
+            @RequestBody Map<String, Object> body,
             @AuthenticationPrincipal User organizer) {
-        Long eventId = body.get("eventId");
-        Long userId = body.get("userId");
+        if (body.get("eventId") == null) {
+            throw new RuntimeException("eventId is required");
+        }
+        Long eventId = Long.valueOf(body.get("eventId").toString());
 
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
@@ -34,10 +37,20 @@ public class StaffController {
             throw new RuntimeException("Not authorized");
         }
 
-        User staff = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User staff;
+        if (body.get("userId") != null) {
+            staff = userRepository.findById(Long.valueOf(body.get("userId").toString()))
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+        } else if (body.get("email") != null) {
+            String email = body.get("email").toString().trim();
+            staff = userRepository.findByEmail(email.toLowerCase())
+                    .or(() -> userRepository.findByEmail(email))
+                    .orElseThrow(() -> new RuntimeException("No user with email " + email));
+        } else {
+            throw new RuntimeException("Either userId or email is required");
+        }
 
-        if (staffAssignmentRepository.existsByEventIdAndUserId(eventId, userId)) {
+        if (staffAssignmentRepository.existsByEventIdAndUserId(eventId, staff.getId())) {
             throw new RuntimeException("User already assigned");
         }
 
@@ -51,8 +64,13 @@ public class StaffController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ORGANIZER')")
-    public ResponseEntity<Void> removeStaff(@PathVariable Long id) {
-        staffAssignmentRepository.deleteById(id);
+    public ResponseEntity<Void> removeStaff(@PathVariable Long id, @AuthenticationPrincipal User organizer) {
+        StaffAssignment assignment = staffAssignmentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Assignment not found"));
+        if (!assignment.getEvent().getOrganizer().getId().equals(organizer.getId())) {
+            throw new RuntimeException("Not authorized");
+        }
+        staffAssignmentRepository.delete(assignment);
         return ResponseEntity.ok().build();
     }
 
