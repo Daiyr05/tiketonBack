@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -20,16 +22,25 @@ public class PromoService {
     private final PromotionalCampaignRepository campaignRepository;
     private final PromoCodeRepository promoCodeRepository;
     private final EventRepository eventRepository;
+    private final TicketTypeRepository ticketTypeRepository;
     private final AuditService auditService;
 
     public Map<String, Object> createCampaign(Long eventId, String name, String discountType,
                                                BigDecimal discountValue, Integer maxRedemptions,
                                                LocalDateTime validFrom, LocalDateTime validTo,
-                                               User organizer) {
+                                               Set<Long> ticketTypeIds, User organizer) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found"));
         if (!event.getOrganizer().getId().equals(organizer.getId())) {
             throw new RuntimeException("Not authorized");
+        }
+        Set<Long> applicableTypes = ticketTypeIds != null ? new HashSet<>(ticketTypeIds) : new HashSet<>();
+        for (Long ticketTypeId : applicableTypes) {
+            TicketType ticketType = ticketTypeRepository.findById(ticketTypeId)
+                    .orElseThrow(() -> new RuntimeException("Ticket type not found: " + ticketTypeId));
+            if (!ticketType.getEvent().getId().equals(eventId)) {
+                throw new RuntimeException("Ticket type " + ticketTypeId + " does not belong to this event");
+            }
         }
 
         PromotionalCampaign campaign = PromotionalCampaign.builder()
@@ -42,6 +53,7 @@ public class PromoService {
                 .validFrom(validFrom)
                 .validTo(validTo)
                 .active(true)
+                .ticketTypeIds(applicableTypes)
                 .build();
         campaign = campaignRepository.save(campaign);
 
@@ -66,7 +78,8 @@ public class PromoService {
                 "promoCode", code,
                 "campaignLink", campaignLink,
                 "discountType", campaign.getDiscountType().name(),
-                "discountValue", campaign.getDiscountValue()
+                "discountValue", campaign.getDiscountValue(),
+                "ticketTypeIds", campaign.getTicketTypeIds()
         );
     }
 
@@ -91,7 +104,9 @@ public class PromoService {
                 "valid", true,
                 "discountType", campaign.getDiscountType().name(),
                 "discountValue", campaign.getDiscountValue(),
-                "eventId", campaign.getEvent().getId()
+                "eventId", campaign.getEvent().getId(),
+                // Empty = applies to every ticket type of the event
+                "ticketTypeIds", campaign.getTicketTypeIds()
         );
     }
 

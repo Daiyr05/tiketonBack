@@ -7,6 +7,8 @@ import org.example.lateticket.entity.enums.DiscountType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "promotional_campaigns")
@@ -39,6 +41,18 @@ public class PromotionalCampaign {
     private LocalDateTime validTo;
 
     private boolean active;
+
+    /** Ticket types this campaign applies to; empty = all ticket types of the event. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "promotional_campaign_ticket_types", joinColumns = @JoinColumn(name = "campaign_id"))
+    @Column(name = "ticket_type_id")
+    @Builder.Default
+    private Set<Long> ticketTypeIds = new HashSet<>();
+
+    /** True if the campaign covers the given ticket type. */
+    public boolean appliesTo(Long ticketTypeId) {
+        return ticketTypeIds == null || ticketTypeIds.isEmpty() || ticketTypeIds.contains(ticketTypeId);
+    }
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

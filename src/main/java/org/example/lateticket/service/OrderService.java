@@ -105,6 +105,9 @@ public class OrderService {
                     .orElseThrow(() -> new RuntimeException("Invalid promo code"));
 
             PromotionalCampaign campaign = promoCode.getCampaign();
+            if (!campaign.getEvent().getId().equals(event.getId())) {
+                throw new RuntimeException("Promo code is not valid for this event");
+            }
             if (!campaign.isActive()) {
                 throw new RuntimeException("Promo code is no longer active");
             }
@@ -119,11 +122,23 @@ public class OrderService {
                 throw new RuntimeException("Promo code has reached its redemption limit");
             }
 
+            // Discount only the ticket types the campaign applies to (SRS 4.14)
+            BigDecimal eligibleAmount = BigDecimal.ZERO;
+            for (OrderItem item : items) {
+                if (campaign.appliesTo(item.getTicketType().getId())) {
+                    eligibleAmount = eligibleAmount.add(
+                            item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+                }
+            }
+            if (eligibleAmount.signum() == 0) {
+                throw new RuntimeException("Promo code does not apply to the selected tickets");
+            }
+
             if (campaign.getDiscountType() == DiscountType.PERCENTAGE) {
-                totalDiscount = totalAmount.multiply(campaign.getDiscountValue())
+                totalDiscount = eligibleAmount.multiply(campaign.getDiscountValue())
                         .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
             } else {
-                totalDiscount = campaign.getDiscountValue().min(totalAmount);
+                totalDiscount = campaign.getDiscountValue().min(eligibleAmount);
             }
 
             totalAmount = totalAmount.subtract(totalDiscount);

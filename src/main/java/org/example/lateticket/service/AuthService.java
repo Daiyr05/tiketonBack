@@ -29,19 +29,28 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final ObjectProvider<JavaMailSender> mailSender;
     private final boolean exposeResetToken;
+    private final boolean exposeVerificationToken;
     private final String frontendUrl;
+
+    @Value("${spring.mail.username:}")
+    private String mailFrom;
+
+    @Value("${app.mail.enabled:false}")
+    private boolean mailEnabled;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
                        ObjectProvider<JavaMailSender> mailSender,
                        @Value("${app.auth.expose-reset-token:false}") boolean exposeResetToken,
+                       @Value("${app.auth.expose-verification-token:false}") boolean exposeVerificationToken,
                        @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.mailSender = mailSender;
         this.exposeResetToken = exposeResetToken;
+        this.exposeVerificationToken = exposeVerificationToken;
         this.frontendUrl = frontendUrl;
     }
 
@@ -69,9 +78,15 @@ public class AuthService {
 
         user = userRepository.save(user);
 
+        String verificationLink = frontendUrl + "/verify-email?token=" + user.getVerificationToken();
+        sendMail(user.getEmail(), "BiletFlow: confirm your email",
+                "Welcome to BiletFlow! Open this link to confirm your email address:\n" + verificationLink);
+
         String token = jwtUtil.generateToken(user.getId(), user.getEmail(), user.getRole().name());
         return new AuthResponse(token, user.getId(), user.getEmail(),
-                user.getRole().name(), user.getFirstName(), user.getLastName());
+                user.getRole().name(), user.getFirstName(), user.getLastName(),
+                // Demo without a mail provider: hand the token back so the frontend can show the link
+                exposeVerificationToken ? user.getVerificationToken() : null);
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -114,7 +129,9 @@ public class AuthService {
             userRepository.save(user);
 
             String link = frontendUrl + "/reset-password?token=" + token;
-            sendResetEmail(user.getEmail(), link);
+            sendMail(user.getEmail(), "BiletFlow: reset your password",
+                    "Open this link to choose a new password (valid for " + RESET_TOKEN_MINUTES
+                            + " minutes):\n" + link);
 
             if (exposeResetToken) {
                 // Academic MVP without a mail provider: hand the token back so the flow can be tested
@@ -142,23 +159,24 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    private void sendResetEmail(String to, String link) {
-        JavaMailSender sender = mailSender.getIfAvailable();
+    /** Sends a plain-text email; never fails the request if SMTP is missing or misconfigured. */
+    private void sendMail(String to, String subject, String text) {
+        JavaMailSender sender = mailEnabled ? mailSender.getIfAvailable() : null;
         if (sender == null) {
-            log.info("Mail sender not configured; password reset link for {}: {}", to, link);
+            log.info("Mail sender not configured; email \"{}\" for {}:\n{}", subject, to, text);
             return;
         }
         try {
             SimpleMailMessage msg = new SimpleMailMessage();
+            if (mailFrom != null && !mailFrom.isBlank()) msg.setFrom(mailFrom);
             msg.setTo(to);
-            msg.setSubject("BiletFlow: reset your password");
-            msg.setText("Open this link to choose a new password (valid for " + RESET_TOKEN_MINUTES
-                    + " minutes):\n" + link);
+            msg.setSubject(subject);
+            msg.setText(text);
             sender.send(msg);
         } catch (Exception e) {
             // SMTP is a placeholder in the academic MVP; don't fail the request over it
-            log.warn("Could not send password reset email to {}: {}", to, e.getMessage());
-            log.info("Password reset link for {}: {}", to, link);
+            log.warn("Could not send email \"{}\" to {}: {}", subject, to, e.getMessage());
+            log.info("Email \"{}\" for {}:\n{}", subject, to, text);
         }
     }
 }

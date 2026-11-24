@@ -11,4 +11,6 @@ public interface SupportCaseRepository extends JpaRepository<SupportCase, Long> 
     List<SupportCase> findByEventId(Long eventId);
     List<SupportCase> findByStatus(SupportCaseStatus status);
     List<SupportCase> findByAssignedToId(Long assignedToId);
+    List<SupportCase> findByEventIsNullOrderByCreatedAtDesc();
+    List<SupportCase> findByEventIsNullAndStatusOrderByCreatedAtDesc(SupportCaseStatus status);
 }
