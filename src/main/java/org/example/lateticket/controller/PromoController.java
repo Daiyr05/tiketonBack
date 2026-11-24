@@ -48,8 +48,9 @@ public class PromoController {
 
     @GetMapping("/campaigns/event/{eventId}")
     @PreAuthorize("hasRole('ORGANIZER')")
-    public ResponseEntity<List<PromotionalCampaign>> getEventCampaigns(@PathVariable Long eventId) {
-        return ResponseEntity.ok(promoService.getEventCampaigns(eventId));
+    public ResponseEntity<List<PromotionalCampaign>> getEventCampaigns(
+            @PathVariable Long eventId, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(promoService.getEventCampaigns(eventId, user));
     }
 
     @PostMapping("/campaigns/{id}/deactivate")
