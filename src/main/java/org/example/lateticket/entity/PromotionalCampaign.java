@@ -43,6 +43,10 @@ public class PromotionalCampaign {
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /** Filled in for the organizer's campaign list; not a column. */
+    @Transient
+    private String promoCode;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

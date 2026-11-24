@@ -59,6 +59,7 @@ public class EventService {
         event.setRegistrationOpenDate(request.getRegistrationOpenDate());
         event.setRegistrationCloseDate(request.getRegistrationCloseDate());
         event.setCapacity(request.getCapacity());
+        event.setAssignedSeating(request.isAssignedSeating());
         if (request.getVisibility() != null) {
             event.setVisibility(parseVisibility(request.getVisibility()));
         }

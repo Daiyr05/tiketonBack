@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -94,8 +95,22 @@ public class PromoService {
         );
     }
 
-    public List<PromotionalCampaign> getEventCampaigns(Long eventId) {
-        return campaignRepository.findByEventId(eventId);
+    public List<PromotionalCampaign> getEventCampaigns(Long eventId, User organizer) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        if (!event.getOrganizer().getId().equals(organizer.getId())) {
+            throw new RuntimeException("Not authorized");
+        }
+
+        List<PromotionalCampaign> campaigns = campaignRepository.findByEventId(eventId);
+        if (campaigns.isEmpty()) return campaigns;
+
+        Map<Long, String> codes = promoCodeRepository
+                .findByCampaignIdIn(campaigns.stream().map(PromotionalCampaign::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(pc -> pc.getCampaign().getId(), PromoCode::getCode, (a, b) -> a));
+        campaigns.forEach(c -> c.setPromoCode(codes.get(c.getId())));
+        return campaigns;
     }
 
     public void deactivateCampaign(Long campaignId, User organizer) {
