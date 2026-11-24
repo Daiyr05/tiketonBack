@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 @RestController
@@ -36,9 +38,14 @@ public class PromoController {
                 LocalDateTime.parse(body.get("validFrom").toString()) : null;
         LocalDateTime validTo = body.get("validTo") != null ?
                 LocalDateTime.parse(body.get("validTo").toString()) : null;
+        Set<Long> ticketTypeIds = new HashSet<>();
+        if (body.get("ticketTypeIds") instanceof List<?> ids) {
+            ids.forEach(id -> ticketTypeIds.add(Long.valueOf(id.toString())));
+        }
 
         return ResponseEntity.ok(promoService.createCampaign(
-                eventId, name, discountType, discountValue, maxRedemptions, validFrom, validTo, user));
+                eventId, name, discountType, discountValue, maxRedemptions, validFrom, validTo,
+                ticketTypeIds, user));
     }
 
     @GetMapping("/validate/{code}")

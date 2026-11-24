@@ -57,12 +57,14 @@ public class SupportController {
     }
 
     @GetMapping("/cases/event/{eventId}")
-    public ResponseEntity<List<SupportCase>> getEventCases(@PathVariable Long eventId) {
-        return ResponseEntity.ok(supportService.getEventCases(eventId));
+    public ResponseEntity<List<SupportCase>> getEventCases(
+            @PathVariable Long eventId, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(supportService.getEventCases(eventId, user));
     }
 
     @GetMapping("/cases/{id}/messages")
-    public ResponseEntity<List<SupportMessage>> getCaseMessages(@PathVariable Long id) {
-        return ResponseEntity.ok(supportService.getCaseMessages(id));
+    public ResponseEntity<List<SupportMessage>> getCaseMessages(
+            @PathVariable Long id, @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(supportService.getCaseMessages(id, user));
     }
 }

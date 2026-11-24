@@ -5,6 +5,7 @@ import org.example.lateticket.entity.Event;
 import org.example.lateticket.entity.User;
 import org.example.lateticket.entity.enums.EventStatus;
 import org.example.lateticket.repository.*;
+import org.example.lateticket.service.SupportService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -21,6 +22,7 @@ public class AdminController {
     private final EventRepository eventRepository;
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
+    private final SupportService supportService;
 
     @GetMapping("/users")
     public ResponseEntity<?> getUsers() {
@@ -30,6 +32,12 @@ public class AdminController {
     @GetMapping("/events")
     public ResponseEntity<?> getEvents() {
         return ResponseEntity.ok(eventRepository.findAll());
+    }
+
+    /** Platform support cases (no event attached): account, activation, payment, technical. */
+    @GetMapping("/support-cases")
+    public ResponseEntity<?> getSupportCases(@RequestParam(required = false) String status) {
+        return ResponseEntity.ok(supportService.getPlatformCases(status));
     }
 
     @GetMapping("/orders")

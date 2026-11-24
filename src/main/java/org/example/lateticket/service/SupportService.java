@@ -2,6 +2,7 @@ package org.example.lateticket.service;
 
 import lombok.RequiredArgsConstructor;
 import org.example.lateticket.entity.*;
+import org.example.lateticket.entity.enums.Role;
 import org.example.lateticket.entity.enums.SupportCaseStatus;
 import org.example.lateticket.repository.*;
 import org.springframework.stereotype.Service;
@@ -54,16 +55,7 @@ public class SupportService {
         SupportCase supportCase = supportCaseRepository.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Support case not found"));
 
-        // Verify access
-        boolean isOwner = supportCase.getUser().getId().equals(sender.getId());
-        boolean isAssigned = supportCase.getAssignedTo() != null &&
-                supportCase.getAssignedTo().getId().equals(sender.getId());
-        boolean isEventOrganizer = supportCase.getEvent() != null &&
-                supportCase.getEvent().getOrganizer().getId().equals(sender.getId());
-
-        if (!isOwner && !isAssigned && !isEventOrganizer) {
-            throw new RuntimeException("Not authorized to message in this case");
-        }
+        requireAccess(supportCase, sender);
 
         SupportMessage msg = SupportMessage.builder()
                 .supportCase(supportCase)
@@ -76,6 +68,7 @@ public class SupportService {
     public void updateCaseStatus(Long caseId, String status, User user) {
         SupportCase supportCase = supportCaseRepository.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Support case not found"));
+        requireAccess(supportCase, user);
         supportCase.setStatus(SupportCaseStatus.valueOf(status.toUpperCase()));
         supportCaseRepository.save(supportCase);
     }
@@ -92,11 +85,45 @@ public class SupportService {
         return supportCaseRepository.findByUserId(userId);
     }
 
-    public List<SupportCase> getEventCases(Long eventId) {
+    public List<SupportCase> getEventCases(Long eventId, User user) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        if (!isPlatformAdmin(user) && !event.getOrganizer().getId().equals(user.getId())) {
+            throw new RuntimeException("Not authorized to view cases for this event");
+        }
         return supportCaseRepository.findByEventId(eventId);
     }
 
-    public List<SupportMessage> getCaseMessages(Long caseId) {
+    public List<SupportMessage> getCaseMessages(Long caseId, User user) {
+        SupportCase supportCase = supportCaseRepository.findById(caseId)
+                .orElseThrow(() -> new RuntimeException("Support case not found"));
+        requireAccess(supportCase, user);
         return supportMessageRepository.findBySupportCaseIdOrderByCreatedAtAsc(caseId);
+    }
+
+    /** Platform cases (no event attached), newest first. For PLATFORM_ADMIN only. */
+    public List<SupportCase> getPlatformCases(String status) {
+        if (status == null || status.isBlank()) {
+            return supportCaseRepository.findByEventIsNullOrderByCreatedAtDesc();
+        }
+        return supportCaseRepository.findByEventIsNullAndStatusOrderByCreatedAtDesc(
+                SupportCaseStatus.valueOf(status.trim().toUpperCase()));
+    }
+
+    /** SRS 4.13: only the author, the assignee, the event organizer or a platform admin may access a case. */
+    private void requireAccess(SupportCase supportCase, User user) {
+        boolean isOwner = supportCase.getUser().getId().equals(user.getId());
+        boolean isAssigned = supportCase.getAssignedTo() != null &&
+                supportCase.getAssignedTo().getId().equals(user.getId());
+        boolean isEventOrganizer = supportCase.getEvent() != null &&
+                supportCase.getEvent().getOrganizer().getId().equals(user.getId());
+
+        if (!isOwner && !isAssigned && !isEventOrganizer && !isPlatformAdmin(user)) {
+            throw new RuntimeException("Not authorized to access this support case");
+        }
+    }
+
+    private boolean isPlatformAdmin(User user) {
+        return user.getRole() == Role.PLATFORM_ADMIN;
     }
 }
