@@ -36,13 +36,15 @@ public class AnalyticsService {
         // Revenue
         var completedOrders = orderRepository.findByEventIdAndStatus(eventId, OrderStatus.COMPLETED);
         BigDecimal grossRevenue = completedOrders.stream()
-                .map(o -> o.getTotalAmount().add(o.getDiscountAmount() != null ? o.getDiscountAmount() : BigDecimal.ZERO))
+                // Ticket revenue before discounts; the platform service fee is not organizer revenue
+                .map(o -> o.getTotalAmount().subtract(fee(o))
+                        .add(o.getDiscountAmount() != null ? o.getDiscountAmount() : BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalDiscounts = completedOrders.stream()
                 .map(o -> o.getDiscountAmount() != null ? o.getDiscountAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal netRevenue = completedOrders.stream()
-                .map(o -> o.getTotalAmount())
+                .map(o -> o.getTotalAmount().subtract(fee(o)))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         var refundedOrders = orderRepository.findByEventIdAndStatus(eventId, OrderStatus.REFUNDED);
@@ -87,5 +89,9 @@ public class AnalyticsService {
         analytics.put("campaigns", campaignStats);
 
         return analytics;
+    }
+
+    private static BigDecimal fee(org.example.lateticket.entity.Order order) {
+        return order.getServiceFee() != null ? order.getServiceFee() : BigDecimal.ZERO;
     }
 }

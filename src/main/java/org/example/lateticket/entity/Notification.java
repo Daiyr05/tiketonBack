@@ -31,6 +31,9 @@ public class Notification {
 
     private boolean read;
 
+    /** Frontend path of the related page, e.g. /orders/12 */
+    private String link;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

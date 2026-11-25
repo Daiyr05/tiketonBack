@@ -27,5 +27,6 @@ public class EventResponse {
     private String visibility;
     private boolean paidSalesActivated;
     private boolean assignedSeating;
+    private String refundPolicy;
     private LocalDateTime createdAt;
 }

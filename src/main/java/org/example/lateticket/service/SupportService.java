@@ -18,6 +18,7 @@ public class SupportService {
     private final EventRepository eventRepository;
     private final OrderRepository orderRepository;
     private final TicketRepository ticketRepository;
+    private final NotificationService notificationService;
 
     public SupportCase createCase(User user, String category, String subject, String message,
                                    Long eventId, Long orderId, Long ticketId) {
@@ -62,15 +63,25 @@ public class SupportService {
                 .sender(sender)
                 .message(message)
                 .build();
-        return supportMessageRepository.save(msg);
+        msg = supportMessageRepository.save(msg);
+        notifyOtherSide(supportCase, sender);
+        return msg;
     }
 
     public void updateCaseStatus(Long caseId, String status, User user) {
         SupportCase supportCase = supportCaseRepository.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Support case not found"));
         requireAccess(supportCase, user);
-        supportCase.setStatus(SupportCaseStatus.valueOf(status.toUpperCase()));
+        SupportCaseStatus newStatus = SupportCaseStatus.valueOf(status.toUpperCase());
+        boolean changed = supportCase.getStatus() != newStatus;
+        supportCase.setStatus(newStatus);
         supportCaseRepository.save(supportCase);
+        if (changed && !supportCase.getUser().getId().equals(user.getId())) {
+            notificationService.notify(supportCase.getUser(), NotificationService.SUPPORT_STATUS,
+                    "Support case #" + supportCase.getId() + ": " + newStatus,
+                    "The status of \"" + supportCase.getSubject() + "\" changed to " + newStatus + ".",
+                    caseLink(supportCase));
+        }
     }
 
     public void assignCase(Long caseId, User assignedTo) {
@@ -121,6 +132,29 @@ public class SupportService {
         if (!isOwner && !isAssigned && !isEventOrganizer && !isPlatformAdmin(user)) {
             throw new RuntimeException("Not authorized to access this support case");
         }
+    }
+
+    /** A reply from staff notifies the author; a message from the author notifies whoever handles the case. */
+    private void notifyOtherSide(SupportCase supportCase, User sender) {
+        String title = "New reply in support case #" + supportCase.getId();
+        String text = "New message in \"" + supportCase.getSubject() + "\".";
+        if (!supportCase.getUser().getId().equals(sender.getId())) {
+            notificationService.notify(supportCase.getUser(), NotificationService.SUPPORT_REPLY, title, text,
+                    caseLink(supportCase));
+        } else if (supportCase.getAssignedTo() != null) {
+            notificationService.notify(supportCase.getAssignedTo(), NotificationService.SUPPORT_REPLY, title, text,
+                    caseLink(supportCase));
+        } else if (supportCase.getEvent() != null) {
+            notificationService.notify(supportCase.getEvent().getOrganizer(), NotificationService.SUPPORT_REPLY,
+                    title, text, caseLink(supportCase));
+        } else {
+            notificationService.notifyPlatformAdmins(NotificationService.SUPPORT_REPLY, title, text,
+                    caseLink(supportCase));
+        }
+    }
+
+    private String caseLink(SupportCase supportCase) {
+        return "/support/" + supportCase.getId();
     }
 
     private boolean isPlatformAdmin(User user) {

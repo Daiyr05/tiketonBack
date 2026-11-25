@@ -56,6 +56,8 @@ public class SeatService {
                             .section(section.getName())
                             .rowLabel(row.getLabel())
                             .seatNumber(String.valueOf(n))
+                            .accessible(row.isAccessible()
+                                    || (row.getAccessibleSeats() != null && row.getAccessibleSeats().contains(n)))
                             .status(SeatStatus.AVAILABLE)
                             .build());
                 }
@@ -215,6 +217,8 @@ public class SeatService {
             SeatMapRequest.RowRequest row = new SeatMapRequest.RowRequest();
             row.setLabel(String.valueOf(r));
             row.setSeats(section.getSeatsPerRow());
+            row.setAccessible(section.getAccessibleRows() != null
+                    && section.getAccessibleRows().contains(row.getLabel()));
             rows.add(row);
         }
         return rows;
@@ -235,6 +239,7 @@ public class SeatService {
                 .ticketTypeId(seat.getTicketType().getId())
                 .ticketTypeName(seat.getTicketType().getName())
                 .price(seat.getTicketType().getPrice())
+                .accessible(seat.isAccessible())
                 .status(status)
                 .heldByMe(heldByMe)
                 .heldUntil(heldByMe ? seat.getHeldUntil() : null)

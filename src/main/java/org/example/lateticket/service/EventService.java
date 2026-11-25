@@ -10,6 +10,7 @@ import org.example.lateticket.repository.EventRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final AuditService auditService;
+    private final NotificationService notificationService;
 
     public EventResponse createEvent(EventRequest request, User organizer) {
         Event event = Event.builder()
@@ -37,6 +39,7 @@ public class EventService {
                 .visibility(parseVisibility(request.getVisibility()))
                 .paidSalesActivated(false)
                 .assignedSeating(request.isAssignedSeating())
+                .refundPolicy(request.getRefundPolicy())
                 .build();
 
         event = eventRepository.save(event);
@@ -46,6 +49,11 @@ public class EventService {
 
     public EventResponse updateEvent(Long eventId, EventRequest request, User organizer) {
         Event event = getEventOwnedBy(eventId, organizer);
+        boolean scheduleChanged = !Objects.equals(event.getEventDate(), request.getEventDate())
+                || !Objects.equals(event.getEventEndDate(), request.getEventEndDate())
+                || !Objects.equals(event.getVenueName(), request.getVenueName())
+                || !Objects.equals(event.getVenueAddress(), request.getVenueAddress())
+                || !Objects.equals(event.getCity(), request.getCity());
 
         event.setTitle(request.getTitle());
         event.setDescription(request.getDescription());
@@ -60,12 +68,18 @@ public class EventService {
         event.setRegistrationCloseDate(request.getRegistrationCloseDate());
         event.setCapacity(request.getCapacity());
         event.setAssignedSeating(request.isAssignedSeating());
+        event.setRefundPolicy(request.getRefundPolicy());
         if (request.getVisibility() != null) {
             event.setVisibility(parseVisibility(request.getVisibility()));
         }
 
         event = eventRepository.save(event);
         auditService.log(event.getId(), organizer.getId(), "UPDATE", "Event", event.getId(), "Event updated");
+        if (scheduleChanged && event.getStatus() == EventStatus.PUBLISHED) {
+            notificationService.notifyEventAttendees(event.getId(), NotificationService.EVENT_UPDATED,
+                    "Event details changed: " + event.getTitle(),
+                    "The date, time or venue of \"" + event.getTitle() + "\" has changed. Please check the event page.");
+        }
         return toResponse(event);
     }
 
@@ -90,6 +104,9 @@ public class EventService {
         event.setStatus(EventStatus.CANCELLED);
         event = eventRepository.save(event);
         auditService.log(event.getId(), organizer.getId(), "CANCEL", "Event", event.getId(), "Event cancelled");
+        notificationService.notifyEventAttendees(event.getId(), NotificationService.EVENT_CANCELLED,
+                "Event cancelled: " + event.getTitle(),
+                "\"" + event.getTitle() + "\" has been cancelled by the organizer.");
         return toResponse(event);
     }
 
@@ -109,6 +126,7 @@ public class EventService {
                 .visibility(original.getVisibility())
                 .paidSalesActivated(false)
                 .assignedSeating(original.isAssignedSeating())
+                .refundPolicy(original.getRefundPolicy())
                 .build();
         copy = eventRepository.save(copy);
         return toResponse(copy);
@@ -180,6 +198,7 @@ public class EventService {
                 .visibility(event.getVisibility().name())
                 .paidSalesActivated(event.isPaidSalesActivated())
                 .assignedSeating(event.isAssignedSeating())
+                .refundPolicy(event.getRefundPolicy())
                 .createdAt(event.getCreatedAt())
                 .build();
     }
