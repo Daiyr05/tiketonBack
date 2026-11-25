@@ -18,6 +18,10 @@ public class OrderResponse {
     private String attendeeEmail;
     private BigDecimal totalAmount;
     private BigDecimal discountAmount;
+    /** Platform service fee, already included in totalAmount */
+    private BigDecimal serviceFee;
+    /** Ticket price total before discount and fee */
+    private BigDecimal subtotal;
     private String status;
     private String promoCode;
     private List<ItemResponse> items;

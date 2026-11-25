@@ -6,6 +6,7 @@ import org.example.lateticket.entity.*;
 import org.example.lateticket.entity.enums.*;
 import org.example.lateticket.repository.*;
 import org.example.lateticket.entity.Refund;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,13 @@ public class OrderService {
     private final RefundRepository refundRepository;
     private final AuditService auditService;
     private final SeatService seatService;
+    private final PlatformSettingsRepository platformSettingsRepository;
+    private final NotificationService notificationService;
+    private final MailService mailService;
+    private final PdfTicketService pdfTicketService;
+
+    @Value("${app.frontend-url:http://localhost:5173}")
+    private String frontendUrl;
 
     @Transactional
     public OrderResponse createOrder(OrderRequest request, User attendee) {
@@ -145,12 +153,17 @@ public class OrderService {
             campaign.setCurrentRedemptions(campaign.getCurrentRedemptions() + 1);
         }
 
+        // Platform service fee on paid orders (SRS 4.6), included in the total
+        BigDecimal serviceFee = calculateServiceFee(totalAmount);
+        totalAmount = totalAmount.add(serviceFee);
+
         // Create order
         Order order = Order.builder()
                 .attendee(attendee)
                 .event(event)
                 .totalAmount(totalAmount)
                 .discountAmount(totalDiscount)
+                .serviceFee(serviceFee)
                 .status(OrderStatus.PENDING)
                 .promoCode(promoCode)
                 .attendeeFirstName(request.getAttendeeFirstName() != null ?
@@ -182,7 +195,8 @@ public class OrderService {
         if (isFreeOrder) {
             order.setStatus(OrderStatus.COMPLETED);
             orderRepository.save(order);
-            generateTickets(order, items);
+            List<Ticket> tickets = generateTickets(order, items);
+            onOrderCompleted(order, tickets, true);
 
             // Create simulated payment record
             Payment payment = Payment.builder()
@@ -229,7 +243,8 @@ public class OrderService {
         orderRepository.save(order);
 
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
-        generateTickets(order, items);
+        List<Ticket> tickets = generateTickets(order, items);
+        onOrderCompleted(order, tickets, false);
 
         auditService.log(order.getEvent().getId(), attendee.getId(), "PAYMENT", "Order", order.getId(),
                 "Payment completed (simulated): " + order.getTotalAmount() + " KZT");
@@ -279,6 +294,11 @@ public class OrderService {
 
         auditService.log(order.getEvent().getId(), organizer.getId(), "REFUND", "Order", order.getId(),
                 "Order refunded: " + order.getTotalAmount() + " KZT");
+        notificationService.notify(order.getAttendee(), NotificationService.ORDER_REFUNDED,
+                "Order #" + order.getId() + " refunded",
+                order.getTotalAmount() + " KZT for \"" + order.getEvent().getTitle() + "\" will be returned."
+                        + (reason != null && !reason.isBlank() ? " Reason: " + reason : ""),
+                "/orders/" + order.getId());
 
         return toResponse(order);
     }
@@ -317,6 +337,13 @@ public class OrderService {
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
 
+        if (!isAttendee) {
+            notificationService.notify(order.getAttendee(), NotificationService.ORDER_CANCELLED,
+                    "Order #" + order.getId() + " cancelled",
+                    "Your order for \"" + order.getEvent().getTitle() + "\" was cancelled by the organizer.",
+                    "/orders/" + order.getId());
+        }
+
         return toResponse(order);
     }
 
@@ -325,18 +352,77 @@ public class OrderService {
                 .stream().map(this::toResponse).toList();
     }
 
-    public List<OrderResponse> getEventOrders(Long eventId) {
+    public List<OrderResponse> getEventOrders(Long eventId, User user) {
+        Event event = eventRepository.findById(eventId)
+                .orElseThrow(() -> new RuntimeException("Event not found"));
+        if (user.getRole() != Role.PLATFORM_ADMIN && !event.getOrganizer().getId().equals(user.getId())) {
+            throw new RuntimeException("Not authorized");
+        }
         return orderRepository.findByEventId(eventId)
                 .stream().map(this::toResponse).toList();
     }
 
-    public OrderResponse getOrder(Long orderId) {
+    public List<OrderResponse> getAllOrders() {
+        return orderRepository.findAllByOrderByCreatedAtDesc()
+                .stream().map(this::toResponse).toList();
+    }
+
+    public OrderResponse getOrder(Long orderId, User user) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
+        boolean allowed = order.getAttendee().getId().equals(user.getId())
+                || order.getEvent().getOrganizer().getId().equals(user.getId())
+                || user.getRole() == Role.PLATFORM_ADMIN;
+        if (!allowed) {
+            throw new RuntimeException("Order not found");
+        }
         return toResponse(order);
     }
 
-    private void generateTickets(Order order, List<OrderItem> items) {
+    private BigDecimal calculateServiceFee(BigDecimal amount) {
+        if (amount.signum() <= 0) return BigDecimal.ZERO;
+        PlatformSettings settings = platformSettingsRepository.findById(PlatformSettings.SINGLETON_ID).orElse(null);
+        if (settings == null) return BigDecimal.ZERO;
+        BigDecimal fee = amount.multiply(settings.getServiceFeePercent())
+                .divide(BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP)
+                .add(settings.getServiceFeeFixed());
+        return fee.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    /** Notification + email with PDF tickets once an order is completed (SRS 4.4, 4.7, 4.10). */
+    private void onOrderCompleted(Order order, List<Ticket> tickets, boolean free) {
+        Event event = order.getEvent();
+        String link = "/orders/" + order.getId();
+        notificationService.notify(order.getAttendee(), NotificationService.ORDER_CONFIRMED,
+                free ? "Registration confirmed" : "Payment received",
+                (free ? "You are registered for \"" : "Your tickets for \"") + event.getTitle() + "\" are ready.",
+                link);
+
+        List<MailService.Attachment> attachments = new ArrayList<>();
+        if (mailService.isEnabled()) {
+            for (Ticket ticket : tickets) {
+                attachments.add(new MailService.Attachment("ticket-" + ticket.getTicketCode().substring(0, 8) + ".pdf",
+                        "application/pdf", pdfTicketService.generateTicketPdf(ticket)));
+            }
+        }
+        StringBuilder text = new StringBuilder()
+                .append("Hello ").append(order.getAttendeeFirstName()).append(",\n\n")
+                .append(free ? "Your registration is confirmed for:\n" : "Thank you for your purchase! Your tickets for:\n")
+                .append(event.getTitle()).append("\n");
+        if (event.getEventDate() != null) text.append("Date: ").append(event.getEventDate()).append(" (UTC)\n");
+        if (event.getVenueName() != null) text.append("Venue: ").append(event.getVenueName()).append("\n");
+        text.append("\nOrder #").append(order.getId()).append(", tickets: ").append(tickets.size());
+        if (!free) text.append(", total: ").append(order.getTotalAmount()).append(" KZT");
+        text.append("\n\nYour tickets are attached as PDF and available at:\n")
+                .append(frontendUrl).append(link).append("\n");
+
+        mailService.sendAfterCommit(order.getAttendeeEmail(),
+                (free ? "BiletFlow: registration confirmed - " : "BiletFlow: your tickets - ") + event.getTitle(),
+                text.toString(), attachments);
+    }
+
+    private List<Ticket> generateTickets(Order order, List<OrderItem> items) {
+        List<Ticket> created = new ArrayList<>();
         Map<Long, List<Seat>> seatsByTicketType = new HashMap<>();
         for (Seat seat : seatService.getOrderSeats(order.getId())) {
             seatsByTicketType.computeIfAbsent(seat.getTicketType().getId(), k -> new ArrayList<>()).add(seat);
@@ -359,9 +445,10 @@ public class OrderService {
                         .seatRow(seat != null ? seat.getRowLabel() : item.getSeatRow())
                         .seatNumber(seat != null ? seat.getSeatNumber() : item.getSeatNumber())
                         .build();
-                ticketRepository.save(ticket);
+                created.add(ticketRepository.save(ticket));
             }
         }
+        return created;
     }
 
     private OrderResponse toResponse(Order order) {
@@ -369,6 +456,7 @@ public class OrderService {
         if (items == null || items.isEmpty()) {
             items = orderItemRepository.findByOrderId(order.getId());
         }
+        BigDecimal fee = order.getServiceFee() != null ? order.getServiceFee() : BigDecimal.ZERO;
         Map<Long, List<String>> seatLabels = new HashMap<>();
         for (Seat seat : seatService.getOrderSeats(order.getId())) {
             seatLabels.computeIfAbsent(seat.getTicketType().getId(), k -> new ArrayList<>())
@@ -384,6 +472,9 @@ public class OrderService {
                 .attendeeEmail(order.getAttendeeEmail())
                 .totalAmount(order.getTotalAmount())
                 .discountAmount(order.getDiscountAmount())
+                .serviceFee(fee)
+                .subtotal(order.getTotalAmount().subtract(fee)
+                        .add(order.getDiscountAmount() != null ? order.getDiscountAmount() : BigDecimal.ZERO))
                 .status(order.getStatus().name())
                 .promoCode(order.getPromoCode() != null ? order.getPromoCode().getCode() : null)
                 .items(items.stream().map(item -> OrderResponse.ItemResponse.builder()

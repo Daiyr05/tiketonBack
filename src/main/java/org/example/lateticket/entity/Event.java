@@ -52,6 +52,10 @@ public class Event {
     @Column(nullable = false)
     private EventVisibility visibility;
 
+    /** Refund policy shown to attendees (SRS 4.9), free text */
+    @Column(columnDefinition = "TEXT")
+    private String refundPolicy;
+
     private boolean paidSalesActivated;
     private boolean assignedSeating;
 

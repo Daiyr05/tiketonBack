@@ -2,6 +2,8 @@ package org.example.lateticket.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -16,6 +18,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleRuntimeException(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "error", e.getMessage(),
+                "timestamp", LocalDateTime.now().toString()
+        ));
+    }
+
+    /** Bean validation errors on @Valid request bodies: 400 with the first field error. */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException e) {
+        FieldError fieldError = e.getBindingResult().getFieldError();
+        String message = fieldError != null
+                ? fieldError.getField() + ": " + fieldError.getDefaultMessage()
+                : "Invalid request";
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", message,
                 "timestamp", LocalDateTime.now().toString()
         ));
     }

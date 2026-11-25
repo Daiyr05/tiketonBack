@@ -36,6 +36,9 @@ public class SeatMapRequest {
 
         @Min(1)
         private Integer seatsPerRow;
+
+        /** With rowCount + seatsPerRow: labels of rows reserved for people with disabilities (SRS 4.3.1) */
+        private List<String> accessibleRows;
     }
 
     @Data
@@ -45,5 +48,11 @@ public class SeatMapRequest {
 
         @NotNull @Min(1)
         private Integer seats;
+
+        /** Whole row is accessible (wheelchair / reduced mobility) */
+        private boolean accessible;
+
+        /** Individual accessible seat numbers in this row (1-based) */
+        private List<Integer> accessibleSeats;
     }
 }

@@ -36,6 +36,10 @@ public class Seat {
     @Column(nullable = false)
     private SeatStatus status;
 
+    /** Reserved for people with disabilities (SRS 4.3.1) */
+    @Column(nullable = false)
+    private boolean accessible;
+
     // Temporary hold while the attendee is checking out
     @ManyToOne
     @JoinColumn(name = "held_by")

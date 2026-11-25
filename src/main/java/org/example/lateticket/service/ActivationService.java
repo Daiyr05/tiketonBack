@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.lateticket.entity.Event;
 import org.example.lateticket.entity.OrganizerProfile;
 import org.example.lateticket.entity.User;
+import org.example.lateticket.repository.AuditLogRepository;
 import org.example.lateticket.repository.EventRepository;
 import org.example.lateticket.repository.OrganizerProfileRepository;
 import org.example.lateticket.repository.TicketTypeRepository;
@@ -20,6 +21,7 @@ public class ActivationService {
     private final OrganizerProfileRepository organizerProfileRepository;
     private final TicketTypeRepository ticketTypeRepository;
     private final AuditService auditService;
+    private final AuditLogRepository auditLogRepository;
 
     public Map<String, Object> getActivationChecklist(Long eventId, User organizer) {
         Event event = eventRepository.findById(eventId)
@@ -56,6 +58,15 @@ public class ActivationService {
 
         if (event.isPaidSalesActivated()) {
             throw new RuntimeException("Paid sales already activated");
+        }
+        // An admin suspension can only be lifted by an admin (POST /api/admin/events/{id}/resume-sales)
+        boolean suspendedByAdmin = auditLogRepository.findByEventIdOrderByTimestampDesc(eventId).stream()
+                .filter(l -> "SUSPEND_PAID_SALES".equals(l.getActionType()) || "RESUME_PAID_SALES".equals(l.getActionType()))
+                .findFirst()
+                .map(l -> "SUSPEND_PAID_SALES".equals(l.getActionType()))
+                .orElse(false);
+        if (suspendedByAdmin) {
+            throw new RuntimeException("Paid sales were suspended by a platform administrator. Contact support.");
         }
 
         // For academic MVP: simulate activation fee payment

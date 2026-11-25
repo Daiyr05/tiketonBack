@@ -22,4 +22,5 @@ public class EventRequest {
     private Integer capacity;
     private String visibility; // PUBLIC, UNLISTED, PRIVATE
     private boolean assignedSeating;
+    private String refundPolicy;
 }

@@ -6,10 +6,7 @@ import org.example.lateticket.entity.User;
 import org.example.lateticket.entity.enums.Role;
 import org.example.lateticket.repository.UserRepository;
 import org.example.lateticket.security.JwtUtil;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,28 +24,22 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final ObjectProvider<JavaMailSender> mailSender;
+    private final MailService mailService;
     private final boolean exposeResetToken;
     private final boolean exposeVerificationToken;
     private final String frontendUrl;
 
-    @Value("${spring.mail.username:}")
-    private String mailFrom;
-
-    @Value("${app.mail.enabled:false}")
-    private boolean mailEnabled;
-
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
-                       ObjectProvider<JavaMailSender> mailSender,
+                       MailService mailService,
                        @Value("${app.auth.expose-reset-token:false}") boolean exposeResetToken,
                        @Value("${app.auth.expose-verification-token:false}") boolean exposeVerificationToken,
                        @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
-        this.mailSender = mailSender;
+        this.mailService = mailService;
         this.exposeResetToken = exposeResetToken;
         this.exposeVerificationToken = exposeVerificationToken;
         this.frontendUrl = frontendUrl;
@@ -159,24 +150,7 @@ public class AuthService {
         userRepository.save(user);
     }
 
-    /** Sends a plain-text email; never fails the request if SMTP is missing or misconfigured. */
     private void sendMail(String to, String subject, String text) {
-        JavaMailSender sender = mailEnabled ? mailSender.getIfAvailable() : null;
-        if (sender == null) {
-            log.info("Mail sender not configured; email \"{}\" for {}:\n{}", subject, to, text);
-            return;
-        }
-        try {
-            SimpleMailMessage msg = new SimpleMailMessage();
-            if (mailFrom != null && !mailFrom.isBlank()) msg.setFrom(mailFrom);
-            msg.setTo(to);
-            msg.setSubject(subject);
-            msg.setText(text);
-            sender.send(msg);
-        } catch (Exception e) {
-            // SMTP is a placeholder in the academic MVP; don't fail the request over it
-            log.warn("Could not send email \"{}\" to {}: {}", subject, to, e.getMessage());
-            log.info("Email \"{}\" for {}:\n{}", subject, to, text);
-        }
+        mailService.send(to, subject, text);
     }
 }
