@@ -25,6 +25,13 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/biletflow
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # Mail: values come from a local .env file (see .env.example). Mail stays off when it is missing.
+      APP_MAIL_ENABLED: ${APP_MAIL_ENABLED:-false}
+      APP_MAIL_FROM: ${APP_MAIL_FROM:-noreply@biletflow.kz}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

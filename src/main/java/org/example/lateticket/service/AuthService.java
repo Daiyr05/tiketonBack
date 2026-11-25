@@ -32,7 +32,7 @@ public class AuthService {
     private final boolean exposeVerificationToken;
     private final String frontendUrl;
 
-    @Value("${spring.mail.username:}")
+    @Value("${app.mail.from:noreply@biletflow.kz}")
     private String mailFrom;
 
     @Value("${app.mail.enabled:false}")
