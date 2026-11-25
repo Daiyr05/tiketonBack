@@ -25,6 +25,15 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/biletflow
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # Mail: defaults are the team's Mailtrap sandbox inbox (test-only, nothing reaches real mailboxes).
+      # Port 587: Mailtrap's 2525 accepts connections but never answers from some networks.
+      # A local .env file overrides any of these (see .env.example).
+      APP_MAIL_ENABLED: ${APP_MAIL_ENABLED:-true}
+      APP_MAIL_FROM: ${APP_MAIL_FROM:-noreply@biletflow.kz}
+      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-sandbox.smtp.mailtrap.io}
+      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-ce159e70013424}
+      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-2863da31e9f2da}
     depends_on:
       db:
         condition: service_healthy

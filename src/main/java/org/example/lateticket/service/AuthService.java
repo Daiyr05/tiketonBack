@@ -29,6 +29,12 @@ public class AuthService {
     private final boolean exposeVerificationToken;
     private final String frontendUrl;
 
+    @Value("${app.mail.from:noreply@biletflow.kz}")
+    private String mailFrom;
+
+    @Value("${app.mail.enabled:false}")
+    private boolean mailEnabled;
+
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil,
